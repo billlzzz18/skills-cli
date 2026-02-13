@@ -1,0 +1,21 @@
+[package]
+name = "skills-cli"
+version = "0.2.0"
+edition = "2021"
+
+[workspace]
+members = ["registry"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+dirs = "5"
+reqwest = { version = "0.11", features = ["blocking", "rustls-tls"] }
+zip = "0.6"
+tempfile = "3"
+walkdir = "2"
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
+predicates = "3"
