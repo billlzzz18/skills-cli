@@ -33,6 +33,7 @@ const BANNER: &str = r"
 ╚═════╝     ╚══════╝  ╚═╝       ╚═╝  ╚═══╝     ╚═╝  ╚═╝
 ";
 
+
 const TAGLINE: &str = "Bl1nk Team Kit - Spec-Driven Development Toolkit";
 
 const ONBOARDING_TEMPLATE: &str = include_str!("templates/onboarding-template.md");
