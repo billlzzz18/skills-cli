@@ -229,8 +229,23 @@ fn main() -> Result<()> {
 
 /* ================= BANNER ================= */
 
-fn show_banner() {
+/// Returns the banner with spaces between each character for better readability.
+fn spaced_banner() -> String {
     let lines: Vec<&str> = BANNER.trim().split('\n').collect();
+    let mut result = String::new();
+    for line in lines {
+        for c in line.chars() {
+            result.push(c);
+            result.push(' ');
+        }
+        result.push('\n');
+    }
+    result
+}
+
+fn show_banner() {
+    let banner = spaced_banner();
+    let lines: Vec<&str> = banner.trim().split('\n').collect();
     let colors = [
         console::Color::Magenta,
         console::Color::BrightMagenta,
@@ -410,20 +425,20 @@ fn cmd_init(
     } else {
         println!("1. You're already in the project directory!");
     }
-    println!("2. Start using slash commands with your AI agent:");
-    println!("   2.1 {} - Establish project principles", style("/blinkit.constitution").cyan());
-    println!("   2.2 {} - Create baseline specification", style("/blinkit.specify").cyan());
-    println!("   2.3 {} - Create implementation plan", style("/blinkit.plan").cyan());
-    println!("   2.4 {} - Generate actionable tasks", style("/blinkit.tasks").cyan());
-    println!("   2.5 {} - Execute implementation", style("/blinkit.implement").cyan());
+    println!("2. Start using Bl1nk CLI commands:");
+    println!("   2.1 {} - Establish project principles", style("bl: constitution").cyan());
+    println!("   2.2 {} - Create baseline specification", style("bl: specify").cyan());
+    println!("   2.3 {} - Create implementation plan", style("bl: plan").cyan());
+    println!("   2.4 {} - Generate actionable tasks", style("bl: tasks").cyan());
+    println!("   2.5 {} - Execute implementation", style("bl: implement").cyan());
 
     // Enhancement commands
     println!();
     println!("{} Enhancement Commands", style("▶").magenta());
     println!("   Optional commands to improve quality:");
-    println!("   ○ {} - Ask clarifying questions", style("/blinkit.clarify").cyan());
-    println!("   ○ {} - Consistency report", style("/blinkit.analyze").cyan());
-    println!("   ○ {} - Quality checklists", style("/blinkit.checklist").cyan());
+    println!("   ○ {} - Ask clarifying questions", style("bl: clarify").cyan());
+    println!("   ○ {} - Consistency report", style("bl: analyze").cyan());
+    println!("   ○ {} - Quality checklists", style("bl: checklist").cyan());
 
     Ok(())
 }
@@ -449,7 +464,7 @@ fn cmd_onboard() -> Result<()> {
     println!("{} Created {}", CHECKMARK, style(output_path.display()).green());
     println!("\nNext steps:");
     println!("1. Open the file and follow the instructions for the agent.");
-    println!("2. After analysis, start creating specs with /blinkit.specify.");
+    println!("2. After analysis, start creating specs with bl: specify.");
     Ok(())
 }
 
