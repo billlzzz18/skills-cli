@@ -1,21 +1,24 @@
 [package]
-name = "skills-cli"
-version = "0.2.0"
+name = "bl1nk-cli"
+version = "0.1.0"
 edition = "2021"
-
-[workspace]
-members = ["registry"]
+description = "Bl1nk CLI - Project initialization and universal agent skill installer"
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
-anyhow = "1"
-dirs = "5"
-reqwest = { version = "0.11", features = ["blocking", "rustls-tls"] }
+anyhow = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+console = "0.15"
+dialoguer = "0.11"
+dirs = "5.0"
+indicatif = "0.17"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tempfile = "3.8"
 zip = "0.6"
-tempfile = "3"
+which = "6.0"
 walkdir = "2"
-
-[dev-dependencies]
-assert_cmd = "2"
-tempfile = "3"
-predicates = "3"
+chrono = "0.4"
+lazy_static = "1.4"
