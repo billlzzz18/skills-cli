@@ -781,17 +781,3 @@ volumes:
 │  Real-time UI Updates (React Components)               │
 └─────────────────────────────────────────────────────────┘
 ```
-
----
-
-## ✨ Key Improvements
-
-| Aspect | Original | New Architecture |
-|--------|----------|------------------|
-| **Backend** | TypeScript (Node.js) | Rust + Axum (High Performance) |
-| **Frontend** | Custom TUI (@opentui/core) | Next.js 16.1.6 (Modern Web UI) |
-| **Communication** | Direct CLI | REST API + WebSocket |
-| **Concurrency** | Node.js Event Loop | Tokio Async Runtime |
-| **Type Safety** | Zod Schemas | Rust Type System |
-| **Performance** | Moderate | High (Compiled Binary) |
-| **Scalability** | Single Process | Multi-worker Ready |
