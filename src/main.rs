@@ -23,14 +23,14 @@ static CROSS: Emoji<'_, '_> = Emoji("✗  ", "✗ ");
 static WARN: Emoji<'_, '_> = Emoji("⚠  ", "!");
 static INFO: Emoji<'_, '_> = Emoji("ℹ  ", "i");
 
-// Updated banner with extra spacing between letters (B l 1 N K)
+// ✅ แบนเนอร์ที่ปรับปรุงแล้ว - ตัวอักษรชิดกันและสม่ำเสมอ
 const BANNER: &str = r"
-██████╗   ██╗       ██╗   ███╗   ██╗  ██╗  ██╗
-██╔══██╗  ██║       ██║  ███║  ████╗  ██║  ██║ ██╔╝
-██████╔╝  ██║       ██║  ╚██║  ██╔██╗ ██║  █████╔╝ 
-██╔══██╗  ██║       ██║   ██║  ██║╚██╗██║  ██╔═██╗ 
-██████╔╝  ███████╗  ██║   ██║  ██║ ╚████║  ██║  ██╗
-╚═════╝   ╚══════╝  ╚═╝   ╚═╝  ╚═╝  ╚═══╝  ╚═╝  ╚═╝
+██████╗ ██╗     ██╗███╗   ██╗██╗  ██╗
+██╔══██╗██║     ██║████╗  ██║██║ ██╔╝
+██████╔╝██║     ██║██╔██╗ ██║█████╔╝ 
+██╔══██╗██║     ██║██║╚██╗██║██╔═██╗ 
+██████╔╝███████╗██║██║ ╚████║██║  ██╗
+╚═════╝ ╚══════╝╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝
 ";
 
 const TAGLINE: &str = "Bl1nk Team Kit - Spec-Driven Development Toolkit";
@@ -230,18 +230,24 @@ fn main() -> Result<()> {
 
 /* ================= BANNER ================= */
 
+// ✅ ฟังก์ชันแสดงแบนเนอร์ที่ปรับปรุงแล้ว
 fn show_banner() {
     let lines: Vec<&str> = BANNER.trim().split('\n').collect();
     let colors = [
         console::Color::Magenta,
         console::Color::BrightMagenta,
         console::Color::Cyan,
-        console::Color::BrightPurple,
+        console::Color::BrightCyan,
+        console::Color::BrightMagenta,
+        console::Color::Magenta,
     ];
+    
     for (i, line) in lines.iter().enumerate() {
         let color = colors[i % colors.len()];
-        println!("{}", style(*line).color(color));
+        println!("{}", style(*line).color(color).bold());
     }
+    
+    println!();
     println!("{}", style(TAGLINE).italic().yellow());
     println!();
 }
