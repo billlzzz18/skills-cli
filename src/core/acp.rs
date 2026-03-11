@@ -1331,3 +1331,650 @@
           })
       })
   }
+  
+    // ============================================================================
+  // TESTS
+  // ============================================================================
+
+  #[cfg(test)]
+  mod tests {
+      use super::*;
+      use serde_json::json;
+
+      // ========================================================================
+      // Buffer Tests
+      // ========================================================================
+
+      #[tokio::test]
+      async fn test_generate_notification_id() {
+          let session = SessionState::new("test_process".to_string());
+
+          let id1 = session.generate_notification_id();
+          let id2 = session.generate_notification_id();
+          let id3 = session.generate_notification_id();
+
+          assert_eq!(id1, "notif_1");
+          assert_eq!(id2, "notif_2");
+          assert_eq!(id3, "notif_3");
+      }
+
+      #[tokio::test]
+      async fn test_add_to_buffer() {
+          let session = SessionState::new("test_process".to_string());
+
+          let msg1 = JsonRpcMessage::Notification(JsonRpcNotification {
+              jsonrpc: "2.0".to_string(),
+              method: "test".to_string(),
+              params: None,
+          });
+
+          let id1 = session.add_to_buffer(msg1, "notif_1".to_string()).await;
+
+          let buffer = session.message_buffer.read().await;
+          assert_eq!(buffer.len(), 1);
+          assert_eq!(buffer[0].id, id1);
+      }
+
+      #[tokio::test]
+      async fn test_prune_buffer() {
+          let session = SessionState::new("test_process".to_string());
+
+          for i in 1..=5 {
+              let msg = JsonRpcMessage::Notification(JsonRpcNotification {
+                  jsonrpc: "2.0".to_string(),
+                  method: format!("test_{}", i),
+                  params: None,
+              });
+              session
+                  .add_to_buffer(msg, format!("notif_{}", i))
+                  .await;
+          }
+
+          session.prune_buffer("notif_3").await;
+
+          let buffer = session.message_buffer.read().await;
+          assert_eq!(buffer.len(), 2);
+          assert_eq!(buffer[0].id, "notif_4");
+          assert_eq!(buffer[1].id, "notif_5");
+      }
+
+      #[tokio::test]
+      async fn test_get_buffered_messages_after() {
+          let mut buffer = vec![];
+
+          for i in 1..=5 {
+              buffer.push(BufferedMessage {
+                  id: format!("notif_{}", i),
+                  message: JsonRpcMessage::Notification(JsonRpcNotification {
+                      jsonrpc: "2.0".to_string(),
+                      method: format!("test_{}", i),
+                      params: None,
+                  }),
+              });
+          }
+
+          let result = SessionState::get_buffered_messages_after(&buffer, "notif_2");
+
+          assert_eq!(result.len(), 3);
+          assert_eq!(result[0].id, "notif_3");
+          assert_eq!(result[1].id, "notif_4");
+          assert_eq!(result[2].id, "notif_5");
+      }
+
+      #[tokio::test]
+      async fn test_get_buffered_messages_after_not_found() {
+          let mut buffer = vec![];
+
+          for i in 1..=3 {
+              buffer.push(BufferedMessage {
+                  id: format!("notif_{}", i),
+                  message: JsonRpcMessage::Notification(JsonRpcNotification {
+                      jsonrpc: "2.0".to_string(),
+                      method: format!("test_{}", i),
+                      params: None,
+                  }),
+              });
+          }
+
+          let result = SessionState::get_buffered_messages_after(&buffer, "notif_999");
+
+          assert_eq!(result.len(), 3);
+      }
+
+      #[tokio::test]
+      async fn test_buffer_workflow() {
+          let session = SessionState::new("test_process".to_string());
+
+          // Add 5 messages
+          for i in 1..=5 {
+              let msg = JsonRpcMessage::Notification(JsonRpcNotification {
+                  jsonrpc: "2.0".to_string(),
+                  method: format!("test_{}", i),
+                  params: None,
+              });
+              session
+                  .add_to_buffer(msg, format!("notif_{}", i))
+                  .await;
+          }
+
+          let buffer = session.message_buffer.read().await;
+          assert_eq!(buffer.len(), 5);
+          drop(buffer);
+
+          // Prune up to notif_3
+          session.prune_buffer("notif_3").await;
+
+          let buffer = session.message_buffer.read().await;
+          assert_eq!(buffer.len(), 2);
+          assert_eq!(buffer[0].id, "notif_4");
+          assert_eq!(buffer[1].id, "notif_5");
+      }
+
+      // ========================================================================
+      // ID Mapping Tests
+      // ========================================================================
+
+      #[test]
+      fn test_generate_proxy_id() {
+          let process = ProcessState::new(
+              "test_process".to_string(),
+              TidewaveSpawnOptions {
+                  command: "test".to_string(),
+                  env: HashMap::new(),
+                  cwd: ".".to_string(),
+                  is_wsl: false,
+              },
+          );
+
+          let id1 = process.generate_proxy_id();
+          let id2 = process.generate_proxy_id();
+          let id3 = process.generate_proxy_id();
+
+          assert_eq!(id1, Value::Number(serde_json::Number::from(1)));
+          assert_eq!(id2, Value::Number(serde_json::Number::from(2)));
+          assert_eq!(id3, Value::Number(serde_json::Number::from(3)));
+      }
+
+      #[test]
+      fn test_map_client_id_to_proxy() {
+          let process = ProcessState::new(
+              "test_process".to_string(),
+              TidewaveSpawnOptions {
+                  command: "test".to_string(),
+                  env: HashMap::new(),
+                  cwd: ".".to_string(),
+                  is_wsl: false,
+              },
+          );
+
+          let channel_id = Uuid::new_v4();
+          let client_id = Value::Number(serde_json::Number::from(100));
+
+          let proxy_id = process.map_client_id_to_proxy(channel_id, client_id.clone(), None);
+
+          assert_eq!(proxy_id, Value::Number(serde_json::Number::from(1)));
+
+          // Verify mapping is stored
+          let resolved = process.resolve_proxy_id_to_client(&proxy_id);
+          assert!(resolved.is_some());
+          let (resolved_channel, resolved_client) = resolved.unwrap();
+          assert_eq!(resolved_channel, channel_id);
+          assert_eq!(resolved_client, client_id);
+      }
+
+      #[test]
+      fn test_map_client_id_to_proxy_with_session() {
+          let process = ProcessState::new(
+              "test_process".to_string(),
+              TidewaveSpawnOptions {
+                  command: "test".to_string(),
+                  env: HashMap::new(),
+                  cwd: ".".to_string(),
+                  is_wsl: false,
+              },
+          );
+
+          let channel_id = Uuid::new_v4();
+          let client_id = Value::Number(serde_json::Number::from(100));
+          let session_id = "session_123".to_string();
+
+          let proxy_id = process.map_client_id_to_proxy(
+              channel_id,
+              client_id.clone(),
+              Some(session_id.clone()),
+          );
+
+          // Verify session mapping
+          let session_mapping = process.proxy_to_session_ids.get(&proxy_id);
+          assert!(session_mapping.is_some());
+          let (resolved_session, resolved_client) = session_mapping.unwrap().value().clone();
+          assert_eq!(resolved_session, session_id);
+          assert_eq!(resolved_client, client_id);
+      }
+
+      #[test]
+      fn test_resolve_proxy_id_to_client() {
+          let process = ProcessState::new(
+              "test_process".to_string(),
+              TidewaveSpawnOptions {
+                  command: "test".to_string(),
+                  env: HashMap::new(),
+                  cwd: ".".to_string(),
+                  is_wsl: false,
+              },
+          );
+
+          let channel_id = Uuid::new_v4();
+          let client_id = Value::Number(serde_json::Number::from(100));
+
+          let proxy_id = process.map_client_id_to_proxy(channel_id, client_id.clone(), None);
+
+          let resolved = process.resolve_proxy_id_to_client(&proxy_id);
+          assert!(resolved.is_some());
+
+          let (resolved_channel, resolved_client) = resolved.unwrap();
+          assert_eq!(resolved_channel, channel_id);
+          assert_eq!(resolved_client, client_id);
+      }
+
+      #[test]
+      fn test_resolve_proxy_id_to_client_not_found() {
+          let process = ProcessState::new(
+              "test_process".to_string(),
+              TidewaveSpawnOptions {
+                  command: "test".to_string(),
+                  env: HashMap::new(),
+                  cwd: ".".to_string(),
+                  is_wsl: false,
+              },
+          );
+
+          let fake_proxy_id = Value::Number(serde_json::Number::from(999));
+          let resolved = process.resolve_proxy_id_to_client(&fake_proxy_id);
+
+          assert!(resolved.is_none());
+      }
+
+      #[test]
+      fn test_cleanup_id_mappings() {
+          let process = ProcessState::new(
+              "test_process".to_string(),
+              TidewaveSpawnOptions {
+                  command: "test".to_string(),
+                  env: HashMap::new(),
+                  cwd: ".".to_string(),
+                  is_wsl: false,
+              },
+          );
+
+          let channel_id = Uuid::new_v4();
+          let client_id = Value::Number(serde_json::Number::from(100));
+
+          let proxy_id = process.map_client_id_to_proxy(channel_id, client_id.clone(), None);
+
+          // Verify mapping exists
+          assert!(process.resolve_proxy_id_to_client(&proxy_id).is_some());
+
+          // Cleanup
+          process.cleanup_id_mappings(&proxy_id);
+
+          // Verify mapping is removed
+          assert!(process.resolve_proxy_id_to_client(&proxy_id).is_none());
+      }
+
+      #[test]
+      fn test_multiple_clients_same_process() {
+          let process = ProcessState::new(
+              "test_process".to_string(),
+              TidewaveSpawnOptions {
+                  command: "test".to_string(),
+                  env: HashMap::new(),
+                  cwd: ".".to_string(),
+                  is_wsl: false,
+              },
+          );
+
+          let channel1 = Uuid::new_v4();
+          let channel2 = Uuid::new_v4();
+
+          let client_id1 = Value::Number(serde_json::Number::from(100));
+          let client_id2 = Value::Number(serde_json::Number::from(200));
+
+          let proxy_id1 = process.map_client_id_to_proxy(channel1, client_id1.clone(), None);
+          let proxy_id2 = process.map_client_id_to_proxy(channel2, client_id2.clone(), None);
+
+          assert_ne!(proxy_id1, proxy_id2);
+
+          let resolved1 = process.resolve_proxy_id_to_client(&proxy_id1).unwrap();
+          let resolved2 = process.resolve_proxy_id_to_client(&proxy_id2).unwrap();
+
+          assert_eq!(resolved1.0, channel1);
+          assert_eq!(resolved1.1, client_id1);
+
+          assert_eq!(resolved2.0, channel2);
+          assert_eq!(resolved2.1, client_id2);
+      }
+
+      // ========================================================================
+      // Message Extraction Tests
+      // ========================================================================
+
+      #[test]
+      fn test_extract_session_id_from_request() {
+          let request = JsonRpcRequest {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              method: "test".to_string(),
+              params: Some(json!({
+                  "sessionId": "session_123"
+              })),
+          };
+
+          let session_id = extract_session_id_from_request(&request);
+          assert_eq!(session_id, Some("session_123".to_string()));
+      }
+
+      #[test]
+      fn test_extract_session_id_from_request_missing() {
+          let request = JsonRpcRequest {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              method: "test".to_string(),
+              params: Some(json!({})),
+          };
+
+          let session_id = extract_session_id_from_request(&request);
+          assert_eq!(session_id, None);
+      }
+
+      #[test]
+      fn test_extract_session_id_from_request_no_params() {
+          let request = JsonRpcRequest {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              method: "test".to_string(),
+              params: None,
+          };
+
+          let session_id = extract_session_id_from_request(&request);
+          assert_eq!(session_id, None);
+      }
+
+      #[test]
+      fn test_extract_session_id_from_message_notification() {
+          let message = JsonRpcMessage::Notification(JsonRpcNotification {
+              jsonrpc: "2.0".to_string(),
+              method: "test".to_string(),
+              params: Some(json!({
+                  "sessionId": "session_456"
+              })),
+          });
+
+          let session_id = extract_session_id_from_message(&message);
+          assert_eq!(session_id, Some("session_456".to_string()));
+      }
+
+      #[test]
+      fn test_extract_session_id_from_message_response() {
+          let message = JsonRpcMessage::Response(JsonRpcResponse {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              result: Some(json!({
+                  "sessionId": "session_789"
+              })),
+              error: None,
+          });
+
+          let session_id = extract_session_id_from_message(&message);
+          assert_eq!(session_id, Some("session_789".to_string()));
+      }
+
+      #[test]
+      fn test_inject_notification_id() {
+          let mut notification = JsonRpcNotification {
+              jsonrpc: "2.0".to_string(),
+              method: "test".to_string(),
+              params: Some(json!({})),
+          };
+
+          inject_notification_id(&mut notification, "notif_123".to_string());
+
+          let params = notification.params.unwrap();
+          let meta = params.get("_meta").unwrap();
+          let notif_id = meta.get("tidewave.ai/notificationId").unwrap();
+
+          assert_eq!(notif_id.as_str().unwrap(), "notif_123");
+      }
+
+      #[test]
+      fn test_inject_notification_id_no_params() {
+          let mut notification = JsonRpcNotification {
+              jsonrpc: "2.0".to_string(),
+              method: "test".to_string(),
+              params: None,
+          };
+
+          inject_notification_id(&mut notification, "notif_456".to_string());
+
+          let params = notification.params.unwrap();
+          let meta = params.get("_meta").unwrap();
+          let notif_id = meta.get("tidewave.ai/notificationId").unwrap();
+
+          assert_eq!(notif_id.as_str().unwrap(), "notif_456");
+      }
+
+      #[test]
+      fn test_inject_notification_id_preserves_existing_params() {
+          let mut notification = JsonRpcNotification {
+              jsonrpc: "2.0".to_string(),
+              method: "test".to_string(),
+              params: Some(json!({
+                  "foo": "bar",
+                  "baz": 123
+              })),
+          };
+
+          inject_notification_id(&mut notification, "notif_789".to_string());
+
+          let params = notification.params.unwrap();
+          assert_eq!(params.get("foo").unwrap().as_str().unwrap(), "bar");
+          assert_eq!(params.get("baz").unwrap().as_i64().unwrap(), 123);
+
+          let meta = params.get("_meta").unwrap();
+          let notif_id = meta.get("tidewave.ai/notificationId").unwrap();
+          assert_eq!(notif_id.as_str().unwrap(), "notif_789");
+      }
+
+      // ========================================================================
+      // Capabilities Tests
+      // ========================================================================
+
+      #[test]
+      fn test_check_supports_resuming_with_load_session() {
+          let response = JsonRpcResponse {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              result: Some(json!({
+                  "agentCapabilities": {
+                      "loadSession": true
+                  }
+              })),
+              error: None,
+          };
+
+          assert!(check_supports_resuming(&response));
+      }
+
+      #[test]
+      fn test_check_supports_resuming_with_session_fork() {
+          let response = JsonRpcResponse {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              result: Some(json!({
+                  "agentCapabilities": {
+                      "session": {
+                          "fork": true
+                      }
+                  }
+              })),
+              error: None,
+          };
+
+          assert!(check_supports_resuming(&response));
+      }
+
+      #[test]
+      fn test_check_supports_resuming_with_session_resume() {
+          let response = JsonRpcResponse {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              result: Some(json!({
+                  "agentCapabilities": {
+                      "session": {
+                          "resume": true
+                      }
+                  }
+              })),
+              error: None,
+          };
+
+          assert!(check_supports_resuming(&response));
+      }
+
+      #[test]
+      fn test_check_supports_resuming_no_capabilities() {
+          let response = JsonRpcResponse {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              result: Some(json!({})),
+              error: None,
+          };
+
+          assert!(!check_supports_resuming(&response));
+      }
+
+      #[test]
+      fn test_check_supports_resuming_false() {
+          let response = JsonRpcResponse {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              result: Some(json!({
+                  "agentCapabilities": {
+                      "loadSession": false,
+                      "session": {
+                          "fork": false,
+                          "resume": false
+                      }
+                  }
+              })),
+              error: None,
+          };
+
+          assert!(!check_supports_resuming(&response));
+      }
+
+      #[test]
+      fn test_check_supports_resuming_error_response() {
+          let response = JsonRpcResponse {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              result: None,
+              error: Some(JsonRpcError {
+                  code: -32603,
+                  message: "Internal error".to_string(),
+                  data: None,
+              }),
+          };
+
+          assert!(!check_supports_resuming(&response));
+      }
+
+      // ========================================================================
+      // Integration Tests
+      // ========================================================================
+
+      #[test]
+      fn test_process_state_creation() {
+          let process = ProcessState::new(
+              "test_process".to_string(),
+              TidewaveSpawnOptions {
+                  command: "test".to_string(),
+                  env: HashMap::new(),
+                  cwd: ".".to_string(),
+                  is_wsl: false,
+              },
+          );
+
+          assert_eq!(process.key, "test_process");
+          assert!(!process.init_sent.load(Ordering::SeqCst));
+          assert!(process.stdout_buffer.blocking_read().is_empty());
+          assert!(process.stderr_buffer.blocking_read().is_empty());
+      }
+
+      #[test]
+      fn test_session_state_creation() {
+          let session = SessionState::new("test_process".to_string());
+
+          assert_eq!(session.process_key, "test_process");
+          assert!(!session.cancelled.load(Ordering::SeqCst));
+      }
+
+      #[tokio::test]
+      async fn test_acp_channel_state_creation() {
+          let state = AcpChannelState::new();
+
+          assert!(state.processes.is_empty());
+          assert!(state.sessions.is_empty());
+          assert!(state.channel_senders.is_empty());
+      }
+
+      #[test]
+      fn test_tidewave_spawn_options_serialization() {
+          let opts = TidewaveSpawnOptions {
+              command: "test command".to_string(),
+              env: vec![("KEY".to_string(), "value".to_string())]
+                  .into_iter()
+                  .collect(),
+              cwd: "/tmp".to_string(),
+              is_wsl: true,
+          };
+
+          let json = serde_json::to_value(&opts).unwrap();
+          assert_eq!(json.get("command").unwrap().as_str().unwrap(), "test command");
+          assert_eq!(json.get("is_wsl").unwrap().as_bool().unwrap(), true);
+      }
+
+      #[test]
+      fn test_json_rpc_request_serialization() {
+          let request = JsonRpcRequest {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              method: "initialize".to_string(),
+              params: Some(json!({"test": "value"})),
+          };
+
+          let json_str = serde_json::to_string(&request).unwrap();
+          let parsed: JsonRpcRequest = serde_json::from_str(&json_str).unwrap();
+
+          assert_eq!(parsed.method, "initialize");
+          assert_eq!(parsed.id, Value::Number(serde_json::Number::from(1)));
+      }
+
+      #[test]
+      fn test_json_rpc_response_with_error() {
+          let response = JsonRpcResponse {
+              jsonrpc: "2.0".to_string(),
+              id: Value::Number(serde_json::Number::from(1)),
+              result: None,
+              error: Some(JsonRpcError {
+                  code: -32603,
+                  message: "Internal error".to_string(),
+                  data: None,
+              }),
+          };
+
+          let json_str = serde_json::to_string(&response).unwrap();
+          assert!(json_str.contains("error"));
+          assert!(!json_str.contains("result"));
+      }
+  }
